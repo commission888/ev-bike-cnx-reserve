@@ -32,7 +32,7 @@ export async function appendRow(
   await client().spreadsheets.values.append({
     spreadsheetId: SPREADSHEET_ID,
     range: `${sheetName}!A1`,
-    valueInputOption: "USER_ENTERED",
+    valueInputOption: "RAW",
     requestBody: {
       values: [values.map((v) => (v === null ? "" : String(v)))],
     },
@@ -52,7 +52,7 @@ export async function updateCell(
   await client().spreadsheets.values.update({
     spreadsheetId: SPREADSHEET_ID,
     range: `${sheetName}!${col}${row}`,
-    valueInputOption: "USER_ENTERED",
+    valueInputOption: "RAW",
     requestBody: { values: [[value]] },
   });
 }
