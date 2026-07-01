@@ -123,6 +123,8 @@ function createBooking(params) {
       hasLicense ? "TRUE" : "FALSE",
       purpose, now
     ]);
+    // Force phone column (F=6) to plain text to preserve leading zero
+    bookingsSheet.getRange(bookingsSheet.getLastRow(), 6).setNumberFormat("@");
 
     return {
       bookingRef: bookingRef,
