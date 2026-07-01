@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   // Bookings sheet columns: bookingRef(A), slotId(B), date(C), ...
   const rows = await readRange("Bookings!A:C");
   const bookingCounts: Record<string, number> = {};
-  for (let i = 1; i < rows.length; i++) {
+  for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
     if (row[2] === date) {
       const slotId = row[1];

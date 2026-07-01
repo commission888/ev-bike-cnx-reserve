@@ -76,9 +76,9 @@ function createBooking(params) {
     var otpValues  = otpSheet.getDataRange().getValues();
     var otpSheetRow = -1;
 
-    for (var i = 1; i < otpValues.length; i++) {
+    for (var i = 0; i < otpValues.length; i++) {
       if (String(otpValues[i][0]) === verificationId) {
-        otpSheetRow = i + 1; // 1-indexed (row 1 = header)
+        otpSheetRow = i + 1; // 1-indexed: rows[0] = sheet row 1
         break;
       }
     }
@@ -96,7 +96,7 @@ function createBooking(params) {
     //                   F=phone G=lineId H=hasLicense I=purpose J=createdAt
     var bookingValues = bookingsSheet.getDataRange().getValues();
     var slotCount = 0;
-    for (var j = 1; j < bookingValues.length; j++) {
+    for (var j = 0; j < bookingValues.length; j++) {
       if (String(bookingValues[j][1]) === slotId) {
         slotCount++;
       }

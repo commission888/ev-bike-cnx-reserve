@@ -101,9 +101,9 @@ export async function verifyOtp(verificationId: string, phone: string, code: str
 
   let sheetRow = -1;
   let row: string[] | null = null;
-  for (let i = 1; i < rows.length; i++) {
+  for (let i = 0; i < rows.length; i++) {
     if (rows[i][OTP_COL.id.idx] === verificationId) {
-      sheetRow = i + 1; // sheet is 1-indexed; row 1 = header, row 2 = rows[1]
+      sheetRow = i + 1; // 1-indexed: rows[0] = sheet row 1, rows[1] = sheet row 2, etc.
       row = rows[i];
       break;
     }
