@@ -13,9 +13,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "invalid_request" }, { status: 400 });
   }
 
-  const result = await verifyOtp(verificationId, phone, code);
-  if (!result.ok) {
-    return NextResponse.json({ ok: false, reason: result.reason }, { status: 400 });
+  try {
+    const result = await verifyOtp(verificationId, phone, code);
+    if (!result.ok) {
+      return NextResponse.json({ ok: false, reason: result.reason }, { status: 400 });
+    }
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    console.error("[otp/verify] error:", err);
+    return NextResponse.json({ ok: false, reason: "internal_error" }, { status: 500 });
   }
-  return NextResponse.json({ ok: true });
 }
