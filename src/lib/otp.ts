@@ -4,13 +4,12 @@ import { readRange, appendRow, updateCell } from "@/lib/sheets";
 const OTP_TTL_MINUTES = 5;
 const MAX_VERIFY_ATTEMPTS = 5;
 
-const SMSOK_BASE_URL = process.env.SMSOK_BASE_URL || "";
+const SMSOK_BASE_URL = process.env.SMSOK_BASE_URL || "https://api.smsok.co";
 const SMSOK_API_KEY = process.env.SMSOK_API_KEY || "";
 const SMSOK_API_SECRET = process.env.SMSOK_API_SECRET || "";
-const SMSOK_SEND_PATH = process.env.SMSOK_SEND_OTP_PATH || "/otp/request";
-const SMSOK_VERIFY_PATH = process.env.SMSOK_VERIFY_OTP_PATH || "/otp/verify";
+const SMSOK_SENDER_ID = process.env.SMSOK_SENDER_ID || "";
 
-const isMockMode = !SMSOK_API_KEY || !SMSOK_BASE_URL;
+const isMockMode = !SMSOK_API_KEY || !SMSOK_API_SECRET;
 
 // OtpVerifications sheet columns (1-indexed letter for updateCell, 0-indexed for array access)
 const OTP_SHEET = "OtpVerifications";
@@ -34,64 +33,53 @@ function generateCode() {
   return crypto.randomInt(100000, 1000000).toString();
 }
 
-// Best-effort SMSOK client — isolated here as the single place to patch
-// once real credentials/webhook payload confirm the actual contract.
-async function smsokSend(phone: string): Promise<{ providerRef: string | null }> {
-  const res = await fetch(`${SMSOK_BASE_URL}${SMSOK_SEND_PATH}`, {
+// SMSOK (https://developer.smsok.co) only exposes a generic "send SMS"
+// endpoint (POST /s, HTTP Basic Auth) — there is no hosted OTP send/verify
+// API. The OTP code is always generated and checked locally (see
+// requestOtp/verifyOtp below); SMSOK is used purely as the SMS transport.
+async function smsokSendSms(phone: string, text: string): Promise<void> {
+  const auth = Buffer.from(`${SMSOK_API_KEY}:${SMSOK_API_SECRET}`).toString("base64");
+  const res = await fetch(`${SMSOK_BASE_URL}/s`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${SMSOK_API_KEY}`,
-      "X-Api-Secret": SMSOK_API_SECRET,
+      Authorization: `Basic ${auth}`,
     },
-    body: JSON.stringify({ phone }),
+    body: JSON.stringify({
+      sender: SMSOK_SENDER_ID,
+      text,
+      destinations: [{ destination: phone }],
+    }),
   });
   if (!res.ok) {
-    throw new Error(`SMSOK send OTP failed: ${res.status} ${await res.text()}`);
+    const raw = await res.text();
+    let detail = raw;
+    try {
+      detail = JSON.parse(raw)?.error?.description || raw;
+    } catch {
+      // raw body wasn't JSON — fall back to the raw text as-is
+    }
+    throw new Error(`SMSOK send SMS failed: ${res.status} ${detail}`);
   }
-  const data = await res.json().catch(() => ({}));
-  return { providerRef: data.refId ?? data.requestId ?? data.id ?? null };
-}
-
-async function smsokVerify(
-  phone: string,
-  code: string,
-  providerRef: string | null
-): Promise<boolean> {
-  const res = await fetch(`${SMSOK_BASE_URL}${SMSOK_VERIFY_PATH}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${SMSOK_API_KEY}`,
-      "X-Api-Secret": SMSOK_API_SECRET,
-    },
-    body: JSON.stringify({ phone, otp: code, refId: providerRef }),
-  });
-  if (!res.ok) return false;
-  const data = await res.json().catch(() => ({}));
-  return Boolean(data.success ?? data.verified ?? data.valid);
 }
 
 export async function requestOtp(phone: string) {
   const id = crypto.randomUUID();
+  const code = generateCode();
   const expiresAt = new Date(Date.now() + OTP_TTL_MINUTES * 60_000);
   const now = new Date().toISOString();
 
+  await appendRow(OTP_SHEET, [
+    id, phone, hashCode(code), "PENDING", 0,
+    now, expiresAt.toISOString(), "", "",
+  ]);
+
   if (isMockMode) {
-    const code = generateCode();
-    await appendRow(OTP_SHEET, [
-      id, phone, hashCode(code), "PENDING", 0,
-      now, expiresAt.toISOString(), "", "",
-    ]);
     console.log(`[otp mock] OTP for ${phone}: ${code} (expires ${expiresAt.toISOString()})`);
     return { verificationId: id, mock: true as const, devCode: code };
   }
 
-  const { providerRef } = await smsokSend(phone);
-  await appendRow(OTP_SHEET, [
-    id, phone, "", "PENDING", 0,
-    now, expiresAt.toISOString(), "", providerRef ?? "",
-  ]);
+  await smsokSendSms(phone, `รหัสยืนยัน EV-Bike CNX: ${code} (หมดอายุใน ${OTP_TTL_MINUTES} นาที)`);
   return { verificationId: id, mock: false as const };
 }
 
@@ -128,11 +116,7 @@ export async function verifyOtp(verificationId: string, phone: string, code: str
     return { ok: false, reason: "too_many_attempts" as const };
   }
 
-  const providerRef = row[OTP_COL.providerRef.idx] || null;
-  const isMockVerify = !providerRef && isMockMode;
-  const correct = isMockVerify
-    ? row[OTP_COL.codeHash.idx] === hashCode(code)
-    : await smsokVerify(phone, code, providerRef);
+  const correct = row[OTP_COL.codeHash.idx] === hashCode(code);
 
   if (!correct) {
     await updateCell(OTP_SHEET, sheetRow, OTP_COL.attempts.letter, String(attempts + 1));

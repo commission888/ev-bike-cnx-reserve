@@ -21,39 +21,49 @@ npm run dev                 # http://localhost:3000
 response field `devCode` (และโชว์ในหน้าเว็บเป็นกล่องสีเหลือง) เพื่อให้ทดสอบ flow
 การจองทั้งหมดได้โดยไม่ต้องรอเชื่อมต่อ SMSOK จริง
 
-## การเชื่อมต่อ SMSOK OTP จริง
+## การเชื่อมต่อ SMSOK จริง
 
-SMSOK (https://developer.smsok.co) เป็นเอกสารแบบ JavaScript SPA ที่ไม่สามารถอ่าน
-เนื้อหาผ่าน fetch อัตโนมัติได้ และตามที่แจ้งไว้ การสร้าง API key/secret ต้อง**มี
-webhook URL พร้อมใช้งานก่อน** ขั้นตอนที่แนะนำ:
+SMSOK (https://developer.smsok.co) เป็น API ส่ง SMS ธรรมดา **ไม่มี** endpoint
+สำหรับสร้าง/ยืนยัน OTP ฝั่งเขา — รหัส OTP ถูกสร้างและตรวจสอบในระบบเราเองเสมอ
+(ทั้ง mock mode และโหมดจริง), SMSOK ใช้แค่เป็นช่องทางส่งข้อความ SMS
 
-1. **เปิด webhook ให้เข้าถึงจากอินเทอร์เน็ตได้ก่อน** (ระหว่างรัน `npm run dev`):
-   ```bash
-   ngrok http 3000
+Endpoint จริงที่มี: `POST /s` (ส่ง SMS), `GET /s/{message_id}` (เช็คสถานะ),
+`GET /m/balance` (เช็คเครดิต) — ยืนยันตัวตนด้วย HTTP Basic Auth
+(`base64(API_KEY:API_SECRET)`), base URL คือ `https://api.smsok.co`
+
+ขั้นตอนที่แนะนำ:
+
+1. **เปิด webhook ให้เข้าถึงจากอินเทอร์เน็ตได้ก่อน** (SMSOK บังคับต้องมี webhook URL
+   ก่อนถึงจะสร้าง API key ได้ แม้ webhook นี้จะใช้แค่รับ delivery report ไม่ได้ใช้
+   ยืนยัน OTP) — ตอน dev ใช้ ngrok: `ngrok http 3000` แล้วใช้
+   `https://xxxx.ngrok-free.app/api/webhook/smsok`, หรือถ้า deploy แล้วใช้
+   `https://<โดเมนจริง>/api/webhook/smsok`
+
+2. **สร้าง API Key บนหน้า dashboard ของ SMSOK** — เลือก API Type เป็น **SMS**
+   (ไม่ใช่ OTP เพราะไม่มีจริง) กรอก webhook URL ด้านบน จะได้ `API key` และ
+   `API secret`
+
+3. **ตรวจ 2 เรื่องนี้ในบัญชี SMSOK ก่อนทดสอบ** ไม่งั้นข้อความจะไม่ถึงมือผู้ใช้แม้ API
+   จะตอบสำเร็จ:
+   - **บัญชีทดลอง (trial) จะเปลี่ยนเนื้อหาข้อความเป็นข้อความเริ่มต้นเสมอ** — รหัส OTP
+     ที่ใส่ไปจะไม่ถูกส่งจริง ต้องอัปเกรดบัญชีก่อน
+   - **Sender ID (ชื่อผู้ส่ง) ต้องลงทะเบียนและได้รับอนุมัติล่วงหน้า** ถ้ายังไม่มีให้เว้น
+     `SMSOK_SENDER_ID` ว่างไว้ก่อนได้ (จะยังทดสอบ endpoint ได้ แต่ sender ที่แสดงจะ
+     เป็นค่า default)
+   - ถ้าเปิด **IP Whitelist** ไว้ในหน้า dashboard ต้องปิดหรือเว้นว่าง เพราะ
+     serverless function ของ Netlify ไม่มี IP ขาออกที่ตายตัวให้ whitelist ได้
+
+4. **ใส่ค่าใน `.env` (และใน environment variables ของ Netlify ด้วย):**
    ```
-   จะได้ URL แบบ `https://xxxx.ngrok-free.app` — webhook URL ที่ใช้สมัครคือ
-   `https://xxxx.ngrok-free.app/api/webhook/smsok`
-
-2. **สมัคร/สร้าง API key บนหน้า dashboard ของ SMSOK** โดยกรอก webhook URL ด้านบน
-   จะได้ `API key` และ `API secret`
-
-3. **ลองยิงเทส** ขอ/ยืนยัน OTP จริงจากหน้า dashboard ของ SMSOK (หรือเอกสารที่เขาให้มา
-   หลังสมัคร) แล้วดู log ที่ terminal (`[smsok webhook] ...`) หรือเปิดดูตาราง
-   `WebhookLog` ด้วย `npx prisma studio` — จะเห็นว่า callback ที่ส่งมาเป็น GET หรือ
-   POST จริง และ payload หน้าตาเป็นอย่างไร (route นี้รับทั้งสองแบบไว้แล้วที่
-   `src/app/api/webhook/smsok/route.ts`)
-
-4. **ใส่ค่าใน `.env`:**
-   ```
-   SMSOK_BASE_URL="https://api.smsok.co"      # base URL จริงจากเอกสาร/dashboard
+   SMSOK_BASE_URL="https://api.smsok.co"
    SMSOK_API_KEY="..."
    SMSOK_API_SECRET="..."
-   SMSOK_SEND_OTP_PATH="/otp/request"          # ปรับตาม endpoint จริง
-   SMSOK_VERIFY_OTP_PATH="/otp/verify"         # ปรับตาม endpoint จริง
+   SMSOK_SENDER_ID="..."   # ชื่อผู้ส่งที่ลงทะเบียนไว้กับ SMSOK
    ```
-   เมื่อ `SMSOK_API_KEY` ไม่ว่าง ระบบจะสลับจาก mock mode ไปเรียก API จริงทันที
-   (ดูที่ `src/lib/otp.ts` — ฟังก์ชัน `smsokSend` / `smsokVerify` เป็นจุดเดียวที่ต้อง
-   แก้ให้ตรงกับ request/response shape จริงของ SMSOK ถ้าไม่ตรงกับที่เดาไว้)
+   เมื่อ `SMSOK_API_KEY` และ `SMSOK_API_SECRET` ไม่ว่างทั้งคู่ ระบบจะสลับจาก mock
+   mode ไปยิง SMS จริงทันที (ดูที่ `src/lib/otp.ts` — ฟังก์ชัน `smsokSendSms`)
+   ถ้าเจอ 401 ตอนยิงจริง ให้สงสัยลำดับ key/secret ใน Basic Auth เป็นอันดับแรก
+   (สเปคไม่ได้ระบุชัดว่าตัวไหนคือ username/password)
 
 ## โครงสร้างหลัก
 

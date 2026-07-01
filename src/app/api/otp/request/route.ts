@@ -11,6 +11,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "invalid_phone" }, { status: 400 });
   }
 
-  const result = await requestOtp(phone);
-  return NextResponse.json(result);
+  try {
+    const result = await requestOtp(phone);
+    return NextResponse.json(result);
+  } catch (err) {
+    console.error("[otp/request] error:", err);
+    return NextResponse.json({ error: "send_failed" }, { status: 502 });
+  }
 }
