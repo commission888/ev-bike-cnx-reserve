@@ -351,8 +351,7 @@ export default function BookingForm() {
 
             {devCode && (
               <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                [โหมดทดสอบ] รหัส OTP ของคุณคือ <span className="font-bold">{devCode}</span>{" "}
-                (ยังไม่ได้เชื่อมต่อ SMSOK จริง)
+                [โหมดทดสอบ] รหัส OTP ของคุณคือ <span className="font-bold">{devCode}</span>
               </p>
             )}
 
